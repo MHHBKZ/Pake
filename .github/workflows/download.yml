@@ -1,35 +1,55 @@
-name: Download and Commit Artifact
+name: Download Artifact by ID and Commit
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   download-and-commit:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: chimney-Windows  # Replace with actual artifact name
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: 6703550130
+      - name: Download artifact using GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get artifact information
+          ARTIFACT_INFO=$(gh api repos/${{ github.repository }}/actions/artifacts/6703550130)
+          ARTIFACT_NAME=$(echo $ARTIFACT_INFO | jq -r '.name')
+          ARTIFACT_URL=$(echo $ARTIFACT_INFO | jq -r '.archive_download_url')
+          
+          # Download artifact
+          curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -o artifact.zip $ARTIFACT_URL
+          
+          # Extract files
+          unzip artifact.zip -d ./artifact-content
+          rm artifact.zip
+          
+          echo "Downloaded artifact: $ARTIFACT_NAME"
+          ls -la ./artifact-content/
       
-      - name: Commit and push artifact files
+      - name: Commit files
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Copy artifact content to root or specific directory
+          # Option A: Copy to root
+          cp -r ./artifact-content/* .
+          
+          # Option B: Copy to specific folder (uncomment to use)
+          # mkdir -p ./downloaded-artifacts
+          # cp -r ./artifact-content/* ./downloaded-artifacts/
+          
           git add .
           
-          # Check if there are changes to commit
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "No new files to commit"
           else
-            git commit -m "Download artifact 6703550130 and commit to repo [skip ci]"
+            git commit -m "Add artifact 6703550130 to repository [skip ci]"
             git push
           fi
